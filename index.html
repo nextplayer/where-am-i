@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>我在哪</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root { --bg:#fff; --fg:#1a1a1a; --muted:#666; --bar:#f4f4f2; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#161616; --fg:#eee; --muted:#aaa; --bar:#222; } }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:15px -apple-system, "PingFang TC", sans-serif; }
+  #bar { padding:10px 16px; background:var(--bar); display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  #info { flex:1; min-width:200px; }
+  #info small { color:var(--muted); }
+  button { font:inherit; padding:6px 14px; border-radius:8px; border:1px solid #8884; background:var(--bg); color:var(--fg); cursor:pointer; }
+  #map { height:calc(100% - 56px); }
+</style>
+</head>
+<body>
+<div id="bar">
+  <div id="info">定位中…（瀏覽器會問要不要分享位置，按「允許」）</div>
+  <button id="again">重新定位</button>
+</div>
+<div id="map"></div>
+<script>
+const map = L.map('map').setView([0, 0], 2);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19, attribution: '© OpenStreetMap contributors'
+}).addTo(map);
+let marker, circle;
+const info = document.getElementById('info');
+
+function locate() {
+  info.textContent = '定位中…';
+  navigator.geolocation.getCurrentPosition(p => {
+    const { latitude: lat, longitude: lng, accuracy: acc } = p.coords;
+    if (marker) { marker.remove(); circle.remove(); }
+    circle = L.circle([lat, lng], { radius: acc, color: '#2e9e5b', fillOpacity: 0.15 }).addTo(map);
+    marker = L.circleMarker([lat, lng], { radius: 7, color: '#fff', weight: 2, fillColor: '#2e9e5b', fillOpacity: 1 }).addTo(map);
+    map.fitBounds(circle.getBounds(), { padding: [40, 40] });
+    info.innerHTML = `誤差約 ${Math.round(acc)} 公尺 <small>（${new Date(p.timestamp).toLocaleTimeString()}）</small>`;
+  }, e => {
+    info.textContent = '定位失敗：' + e.message;
+  }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+}
+document.getElementById('again').onclick = locate;
+locate();
+</script>
+</body>
+</html>
