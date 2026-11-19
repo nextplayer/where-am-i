@@ -16,6 +16,10 @@
   button, select { font:inherit; padding:6px 12px; border-radius:8px; border:1px solid #8884; background:var(--bg); color:var(--fg); cursor:pointer; }
   #map { position:absolute; top:56px; bottom:0; left:0; right:0; }
   @media (max-width:520px) { #map { top:96px; } }
+  /* 和紙顆粒：只在浮世繪風格時顯示 */
+  #paper { position:absolute; inset:56px 0 0 0; pointer-events:none; display:none; mix-blend-mode:multiply; opacity:.35;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3CfeColorMatrix values='0 0 0 0 .55 0 0 0 0 .45 0 0 0 0 .3 0 0 0 .6 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E"); }
+  @media (max-width:520px) { #paper { top:96px; } }
 </style>
 </head>
 <body>
@@ -26,16 +30,20 @@
     <option value="parchment">羊皮紙古地圖</option>
     <option value="neon">夜間霓虹</option>
     <option value="sketch">黑白素描</option>
+    <option value="ukiyoe">日式浮世繪</option>
   </select>
   <button id="again">重新定位</button>
 </div>
 <div id="map"></div>
+<div id="paper"></div>
 <script>
 // 每個風格：背景、陸地綠地、水、建築、道路、文字、文字外框
 const THEMES = {
   parchment: { bg:'#efe2c4', green:'#d9cfa0', water:'#a9c1c0', building:'#dccaa3', road:'#b0855a', text:'#5a3b1e', halo:'#efe2c4' },
   neon:      { bg:'#0b0b1a', green:'#10241c', water:'#081a33', building:'#1d1d3a', road:'#ff2bd6', text:'#7df9ff', halo:'#0b0b1a' },
   sketch:    { bg:'#ffffff', green:'#f1f1f1', water:'#dcdcdc', building:'#e6e6e6', road:'#333333', text:'#111111', halo:'#ffffff' },
+  ukiyoe:    { bg:'#f1e3c4', green:'#9aac82', water:'#24477a', building:'#e3cfa6', road:'#4a3426', text:'#2b2118', halo:'#f1e3c4',
+               waterPattern:'seigaiha', noIcons:true },
 };
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
 let baseStyle;
@@ -52,12 +60,13 @@ function themed(name) {
         : /building/.test(id) ? t.building
         : /park|wood|forest|grass|landcover|landuse|green/.test(id) ? t.green : t.bg;
       delete p['fill-pattern'];
+      if (t.waterPattern && /water|ocean|lake|river/.test(id)) p['fill-pattern'] = t.waterPattern;
     }
     else if (l.type === 'fill-extrusion') p['fill-extrusion-color'] = t.building;
     else if (l.type === 'line') p['line-color'] = /water|river|stream|canal/.test(id) ? t.water : t.road;
     else if (l.type === 'symbol' && l.layout && l.layout['text-field']) {
       p['text-color'] = t.text; p['text-halo-color'] = t.halo; p['text-halo-width'] = 1.2;
-      if (name === 'sketch' || name === 'neon') delete l.layout['icon-image'];
+      if (name === 'sketch' || name === 'neon' || t.noIcons) delete l.layout['icon-image'];
     }
   }
   return s;
@@ -66,6 +75,21 @@ function themed(name) {
 const map = new maplibregl.Map({ container:'map', style:STYLE_URL, center:[0,20], zoom:1.5 });
 map.addControl(new maplibregl.NavigationControl(), 'top-right');
 map.once('styledata', () => { baseStyle = map.getStyle(); });
+
+// 青海波：一層層同心半圓的波浪花紋，給水面用
+function seigaiha() {
+  const w = 48, h = 24, c = document.createElement('canvas');
+  c.width = w; c.height = h; const g = c.getContext('2d');
+  g.fillStyle = '#24477a'; g.fillRect(0, 0, w, h);
+  g.strokeStyle = '#c9d6e8'; g.lineWidth = 1.6;
+  for (const [x, y] of [[0, h], [w / 2, h], [w, h], [w / 4, h / 2], [w * 3 / 4, h / 2], [w / 4, h * 1.5], [w * 3 / 4, h * 1.5]]) {
+    for (let r = w / 4; r > 2; r -= 4) { g.beginPath(); g.arc(x, y, r, Math.PI, 2 * Math.PI); g.fillStyle = '#24477a'; g.fill(); g.stroke(); }
+  }
+  return g.getImageData(0, 0, w, h);
+}
+map.on('styleimagemissing', e => {
+  if (e.id === 'seigaiha' && !map.hasImage('seigaiha')) map.addImage('seigaiha', seigaiha(), { pixelRatio: 2 });
+});
 
 let here; // { lng, lat, acc }
 const info = document.getElementById('info');
@@ -99,6 +123,7 @@ map.on('styledata', drawHere);
 document.getElementById('theme').onchange = e => {
   if (!baseStyle) return;
   map.setStyle(themed(e.target.value));
+  document.getElementById('paper').style.display = e.target.value === 'ukiyoe' ? 'block' : 'none';
   map.once('idle', drawHere);
 };
 
